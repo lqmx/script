@@ -31,8 +31,19 @@ cecho(){
 
 Install() {
     echo "install"
+    if [[ $# -eq 1 ]]; then
+        echo "install $1"
+        if [[ $1 == "-f" || $1 == "--force" ]]; then
+            force=true
+        else
+            echo "Usage: ql.sh i [-f] [--force]"
+            exit 1
+        fi
+    fi
 
-    rm -rf "$HOME/.ql"
+    if [[ $force == true ]]; then
+        rm -rf "$HOME/.ql"
+    fi
 
     if [[ ! -d $HOME/.ql ]]; then
         echo "mkdir $HOME/.ql"
@@ -40,6 +51,7 @@ Install() {
     fi
 
     if [[ ! -f $HOME/.ql/config ]]; then
+        echo "init config"
         username=$(git config --global user.name)
         cat <<EOT >> $HOME/.ql/config
 qlUsername=$username # username
@@ -48,9 +60,10 @@ qlPbDir= # proto dir
 EOT
     fi
 
-    curl -s "https://raw.githubusercontent.com/lqmx/script/master/ql.sh" > $HOME/.ql/ql.sh
+    #curl "https://raw.githubusercontent.com/lqmx/script/master/ql.sh" > $HOME/.ql/ql.sh
     chmod +x $HOME/.ql/ql.sh
     echo "alias i='$HOME/.ql/ql.sh'" >> $HOME/.bashrc
+    source $HOME/.bashrc
 }
 
 Config() {
@@ -93,7 +106,7 @@ END
 
 if [[ "$1" == "i" ]]; then
     shift
-    Install
+    Install $@
 elif [[ "$1" == "c" ]]; then
    shift
    Config $@
