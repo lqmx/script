@@ -8,6 +8,8 @@ if [[ -f "$HOME/.ql/config" ]]; then
     source "$HOME/.ql/config"
 fi
 
+cp -f "$qlSourceDir"/ql.sh "$HOME/.ql/ql.sh"
+
 cecho(){
     local exp=$1;
     local color=$2;
@@ -26,6 +28,14 @@ cecho(){
     tput setaf $color;
     echo -n $exp;
     tput sgr0;
+}
+
+function up() { 
+  times=$1 
+  while [ "$times" -gt "0" ]; do 
+    cd .. 
+    times=$(($times - 1)) 
+  done 
 }
 
 
@@ -48,6 +58,8 @@ Install() {
     if [[ ! -d $HOME/.ql ]]; then
         echo "mkdir $HOME/.ql"
         mkdir $HOME/.ql
+    else
+        echo "$HOME/.ql already exists. skip"
     fi
 
     if [[ ! -f $HOME/.ql/config ]]; then
@@ -58,12 +70,25 @@ qlUsername=$username # username
 qlWpDir= # work dir
 qlPbDir= # proto dir
 EOT
+    else
+        echo "$HOME/.ql/config already exists. skip"
     fi
 
     #curl "https://raw.githubusercontent.com/lqmx/script/master/ql.sh" > $HOME/.ql/ql.sh
-    chmod +x $HOME/.ql/ql.sh
-    echo "alias i='$HOME/.ql/ql.sh'" >> $HOME/.bashrc
-    source $HOME/.bashrc
+    if [[ ! -f $HOME/.ql/ql.sh ]]; then
+        echo "curl ql.sh"
+        curl "https://raw.githubusercontent.com/lqmx/script/master/ql.sh" > $HOME/.ql/ql.sh
+        chmod +x $HOME/.ql/ql.sh
+    else
+        echo "$HOME/.ql/ql.sh already exists, skip"
+    fi
+
+    if grep --quiet "alias i='$HOME/.ql/ql.sh'" $HOME/.bashrc; then
+        echo "alias i already exists, skip"
+    else
+        echo "alias i='$HOME/.ql/ql.sh'" >> $HOME/.bashrc
+        source $HOME/.bashrc
+    fi
 }
 
 Config() {
@@ -86,28 +111,26 @@ Config() {
 
 
 USAGE=$(cat <<-END
-Hello, $(cecho $qlUsername green)
-
-$now
+Hello, $(cecho $qlUsername green) $now
 
 Usage: $0 [command]
-
 Commands:
 
-  i: install
+  i: install 
+    -f, --force: force install
 
   c: config
-       eg: ql c to see all config
-       eg: ql c $(cecho [name] cyan) to see config
-       eg: ql c $(cecho [name] cyan) $(cecho [value] cyan) to set config
+    eg: ql c to see all config
+    eg: ql c $(cecho [name] cyan) to see config
+    eg: ql c $(cecho [name] cyan) $(cecho [value] cyan) to set config
 
 END
 )
 
-if [[ "$1" == "i" ]]; then
+if [[ "$1" == "i" ]] || [[ "$1" == "install" ]]; then
     shift
     Install $@
-elif [[ "$1" == "c" ]]; then
+elif [[ "$1" == "c" ]] || [[ "$1" == "config" ]]; then
    shift
    Config $@
 else
