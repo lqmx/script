@@ -64,6 +64,23 @@ qlWpDir= # 工作目录
 qlPbDir= # proto文件目录
 qlHostDev= # 本地开发服务器地址
 qlGitLab= # gitlab地址
+qlDevIp= # 开发服务器ip
+qlTestIp= # 测试服务器ip
+qlTDevIp= # 开发服务器ip
+qlTTestIp= # 测试服务器ip
+qlSyncToolUser= # 同步用户
+qlSyncToolDir= # 同步目录
+qlDevUser= # 开发服务器用户
+qlTestUser= # 测试服务器用户
+qlTDevUser= # 开发服务器用户
+qlTTestUser= # 测试服务器用户
+qlDevPort= # 开发服务器端口
+qlTestPort= # 测试服务器端口
+qlTDevPort= # 开发服务器端口
+qlTTestPort= # 测试服务器端口
+qlJUser= # 跳板机用户
+qlJPort= # 跳板机端口
+qlJIp= # 跳板机ip
 END
 )
 
@@ -177,7 +194,7 @@ END
 Config() {
      # options
     while [[ "$1" =~ ^- && ! "$1" == "--" ]]; do case $1 in
-    -h | --help ) echo "$usageGitPull"  && exit 0 ;;
+    -h | --help ) echo "$usageConf"  && exit 0 ;;
     esac; shift; done
     if [[ "$1" == '--' ]]; then shift; fi
 
@@ -191,7 +208,6 @@ Config() {
         fi
     else
         if [[ $# -eq 2 ]]; then
-            # todo set config value
             echo $(cEcho "set config $1=$2" info)
             sed -i '' "s/^$1.*/$1=$2/" $HOME/.ql/config
         fi
@@ -209,7 +225,7 @@ $(cEcho gitpull info): gpl 拉取服务
 END
 )
 GitPull() {
-     # options
+    # options
     while [[ "$1" =~ ^- && ! "$1" == "--" ]]; do case $1 in
     -h | --help ) echo "$usageGitPull"  && exit 0 ;;
     esac; shift; done
@@ -395,6 +411,11 @@ GitPush() {
 }
 
 #todo
+GitMerge() {
+    echo $(cEcho "gitmerge" info)
+}
+
+#todo
 Publish() {
     echo $(cEcho "publish" info)
 }
@@ -404,14 +425,79 @@ Generate() {
     echo $(cEcho "generate" info)
 }
 
-#todo
+usageRunSimple="$(cEcho run info): r 运行服务"
+usageRun=$(cat <<-END
+$(cEcho run info): r 运行服务
+    $(cEcho "[服务名,没有则运行当前文件的服务]" option) 运行服务
+    eg: run
+        run service1
+END
+)
 Run() {
-    echo $(cEcho "run" info)
+    while [[ "$1" =~ ^- && ! "$1" == "--" ]]; do case $1 in
+    -h | --help ) echo "$usageRun" && exit 0;;
+    -n | --name )
+        local isName=1
+        ;;
+    esac; shift; done
+    if [[ "$1" == '--' ]]; then shift; fi
+
+    if [[ $1 != "" ]]; then
+        local serviceName=$1
+        cd "$qlWpDir/$serviceName"server
+        console.sh run
+    else
+        console.sh run
+    fi
 }
 
-#todo
+usageBuildToolSimple="$(cEcho buildtool info): bt 生成工具"
+usageBuildTool=$(cat <<-END
+$(cEcho buildtool info): bt 生成工具
+    $(cEcho "[服务名,没有则生成当前文件的服务]" option) $(cEcho "[os,默认系统,linux,windows,]" option)  $(cEcho "[同步的服务器,默认dev,dev,test,tdev,ttest]" option) 生成工具
+    eg: buildtool
+        buildtool service1
+        buildtool service1 linux
+        buildtool service1 linux test
+END
+)
 BuildTool() {
-    echo $(cEcho "buildtool" info)
+    while [[ "$1" =~ ^- && ! "$1" == "--" ]]; do case $1 in
+    -h | --help ) echo "$usageBuildTool" && exit 0;;
+    esac; shift; done
+    if [[ "$1" == '--' ]]; then shift; fi
+
+    local dirname=$(pwd | sed 's/.*\///')
+    local serviceName=$(echo $dirname | sed 's/server//g')
+    if [[ $1 != "" ]]; then
+        serviceName=$1
+    fi
+
+    cd "$qlWpDir/$serviceName"server || echo $(cEcho "服务不存在" error) && exit 1
+
+    if [[ $2 != "" ]]; then
+        GOOS=$2 tools_builder -f "${serviceName}_tool.go"
+    else
+        tools_builder -f "${serviceName}_tool.go"
+    fi
+
+    if [[ $3 != "" ]]; then
+        local ip=""
+        if [[ $3 == "dev" ]]; then
+            ip=$qlDevIp
+        elif [[ $3 == "test" ]]; then
+            ip=$qlTestIp
+        elif [[ $3 == "tdev" ]]; then
+            ip=$qlTDevIp
+        elif [[ $3 == "ttest" ]]; then
+            ip=$qlTTestIp
+        else
+            ip=$3
+        fi
+        echo scp "${serviceName}_tool" $qlSyncToolUser@"$ip":$qlSyncToolDir
+        scp "${serviceName}_tool" $qlSyncToolUser@"$ip":$qlSyncToolDir
+        rm "${serviceName}_tool" || exit 1
+    fi
 }
 
 #todo
@@ -419,9 +505,87 @@ Pkg() {
     echo $(cEcho "pkg" info)
 }
 
-#todo
+usageSyncSimple="$(cEcho sync info): s 同步服务,仅dev环境"
+usageSync=$(cat <<-END
+$(cEcho sync info): 同步服务,仅dev环境
+    $(cEcho "[服务名]" option) $(cEcho "[分支名,为空是同步当前目录所在分支,如果分支有代码没提交会自动提交]" option)
+    eg: sync service1
+        sync service1 branchname
+END
+)
 Sync() {
-    echo $(cEcho "sync" info)
+    while [[ "$1" =~ ^- && ! "$1" == "--" ]]; do case $1 in
+    -h | --help ) echo "$usageSync" && exit 0;;
+    esac; shift; done
+    if [[ "$1" == '--' ]]; then shift; fi
+
+    local dirname=$(pwd | sed 's/.*\///')
+    local serviceName=$(echo $dirname | sed 's/server//g')
+    if [[ $1 != "" ]]; then
+        serviceName=$1
+    fi
+
+    local currentBranch=$(git rev-parse --abbrev-ref HEAD)
+    local branchName=$currentBranch
+    if [[ $2 != "" ]]; then
+        branchName=$2
+    fi
+
+
+    if [[ $branchName == $currentBranch ]]; then
+       if [[ $(git status -s) != "" ]]; then
+        sed -i "" "s/\(.*\)\/\/\(todo for dev.*\)/\/\/\1\/\/\2/g" go.mod 
+        echo $(cEcho "有未提交的修改" warning)
+        git commit -am "ok"
+        git push
+       fi
+    fi
+
+    echo $(cEcho "服务名: $serviceName" info)
+    echo $(cEcho "分支名: $branchName" info)
+
+    local filePath=$qlWpDir/${serviceName}server
+    if [[ ! -d $filePath ]]; then
+        echo $(cEcho "$filePath not exists" error)
+        exit 1
+    fi
+
+    cd $filePath
+
+    git checkout dev 
+    git pull origin dev
+
+    if [[ $branchName != "dev" ]] && [[ $branchName != "" ]]; then
+        git merge "origin/$branchName" 
+
+        local mergeConflictFiles=$(git diff --name-only --diff-filter=U)
+        if [[ $mergeConflictFiles != "" ]]; then
+            echo $(cEcho "合并冲突: $mergeConflictFiles" warning)
+        fi
+        for file in $mergeConflictFiles; do
+            if [[ $file != "go.mod" ]] && [[ $file != "go.sum" ]]; then
+                echo $(cEcho "合并冲突: $file" error)
+                exit 1
+            fi
+            echo $(cEcho "解决冲突: $file" info)
+            git checkout HEAD $file
+        done
+    fi
+
+    rpc_gen -f UpdateAllMod || echo $(cEcho "UpdateMod失败" error) && exit 1
+    console.sh sync || echo $(cEcho "同步失败" error) && exit 1
+
+    if [[ $(git status | grep -c "nothing to commit") -eq 0 ]]; then
+        git commit -am "ok"
+        git push origin dev
+    fi
+
+    if [[ $branchName != "dev" ]] && [[ $branchName != "" ]]; then
+        git checkout "$branchName" || echo $(cEcho "切换$branchName失败" error) && exit 1
+        sed -i "" "s/\/\/\(.*\)\/\/\(todo for dev.*\)/\1\/\/\2/g" go.mod
+    fi
+
+    echo $(cEcho "同步成功" success)
 }
 
 #todo
@@ -434,9 +598,71 @@ Init() {
     echo $(cEcho "init" info)
 }
 
-#todo
+usageSshSimple="$(cEcho ssh info): go 登录服务器"
+usageSsh=$(cat <<-END
+$(cEcho ssh info): go 登录服务器
+    $(cEcho "[服务器,dev,test,tdev,ttest,j]" option)
+    eg: ssh service1
+END
+)
 Ssh() {
-    echo $(cEcho "go" info)
+    while [[ "$1" =~ ^- && ! "$1" == "--" ]]; do case $1 in
+    -h | --help ) echo "$usageSshSimple" && exit 0;;
+    esac; shift; done
+    if [[ "$1" == '--' ]]; then shift; fi
+
+    local ip=""
+    if [[ $1 != "" ]]; then
+        if [[ $1 == "dev" ]]; then
+            ip=$qlDevIp
+        elif [[ $1 == "test" ]]; then
+            ip=$qlTestIp
+        elif [[ $1 == "tdev" ]]; then
+            ip=$qlTDevIp
+        elif [[ $1 == "ttest" ]]; then
+            ip=$qlTTestIp
+        else
+            ip=$1
+        fi
+    fi
+
+    if [[ $ip == 'j' ]]; then
+        ip=$qlJIp
+        ssh $qlJUser@$qlJumpIp -p $qlJumpPort
+    fi
+
+    local user=""
+    if [[ $2 != "" ]]; then
+        if [[ $2 == "dev" ]]; then
+            user=$qlDevUser
+        elif [[ $2 == "test" ]]; then
+            user=$qlTestUser
+        elif [[ $2 == "tdev" ]]; then
+            user=$qlTDevUser
+        elif [[ $2 == "ttest" ]]; then
+            user=$qlTTestUser
+        else
+            user=$2
+        fi
+    fi
+
+    local port=""
+    if [[ $3 != "" ]]; then
+        if [[ $3 == "dev" ]]; then
+            port=$qlDevPort
+        elif [[ $3 == "test" ]]; then
+            port=$qlTestPort
+        elif [[ $3 == "tdev" ]]; then
+            port=$qlTDevPort
+        elif [[ $3 == "ttest" ]]; then
+            port=$qlTTestPort
+        else
+            port=$3
+        fi
+    fi
+
+    ssh $user@$ip -p $port
+
 }
 
 #todo
@@ -459,6 +685,14 @@ usage=$(cat <<-END
 Usage: $0 [command]
 
 Commands:
+    $usageSyncSimple
+
+    $usageRunSimple
+
+    $usageBuildToolSimple
+
+    $usageSshSimple
+
     $usageInstallSimple
 
     $usageConfSimple
@@ -563,7 +797,7 @@ case "$1" in
         Pkg $@
         ;;
 
-    sync)
+    sync | s)
         shift
         Sync $@
         ;;
