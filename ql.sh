@@ -36,6 +36,10 @@ divider() {
     echo
 }
 
+joinBy () {
+    local IFS="$1"; shift; echo "$*";
+}
+
 cEcho(){
     local exp=$1;
     local color=$2;
@@ -405,9 +409,46 @@ GitBranch() {
     done
 }
 
-#todo
+usageGitPushSimple="$(cEcho gitpush info): gph 推送服务分支"
+usageGitPush=$(cat <<-END
+$(cEcho gitpush info): gph 推送服务分支
+    $(cEcho "[服务名 多个用,隔开]" option) 推送服务分支
+    eg: gitpush service1,service2,service3
+END
+)
 GitPush() {
-    echo $(cEcho "gitpush" info)
+    # options
+    while [[ "$1" =~ ^- && ! "$1" == "--" ]]; do case $1 in
+    -h | --help ) echo "$usageGitClone"  && exit 0 ;;
+    esac; shift; done
+    if [[ "$1" == '--' ]]; then shift; fi
+
+    local services=()
+    if [[ $1 == "" ]]; then
+        local dirname=$(pwd | sed 's/.*\///')
+        local serviceName=$(echo $dirname | sed 's/server//g')
+        services=($serviceName)
+    else
+        services=($(echo $1 | cut -d= -f2 | tr ',' ' '))
+    fi
+    
+    if [[ ${#services[@]} -eq 0 ]]; then
+        echo $(cEcho "服务名不能为空 多个用,隔开" error)
+        exit;
+    fi
+
+    for service in "${services[@]}"; do
+        echo
+        echo $(cEcho "$service" info)
+
+        divider
+        cd "$qlWpDir/$service" || exit
+	    # todo
+	    sed -i "s/\!\*\.\*//g"  .gitignore
+	    git status
+        git commit -am 'ok'
+        git push
+    done
 }
 
 #todo
@@ -415,14 +456,169 @@ GitMerge() {
     echo $(cEcho "gitmerge" info)
 }
 
-#todo
+usagePublishSimple="$(cEcho publish info): pub 打包发布服务"
+usagePublish=$(cat <<-END
+$(cEcho publish info): pub 打包发布服务
+    $(cEcho "(服务名 多个用,隔开)" required) $(cEcho "(备注)" required) $(cEcho "[分支,默认为test]" option) 打包发布服务
+    eg: publish service1,service2,service3 somemark
+        publish service1,service2,service3 somemark master
+END
+)
 Publish() {
-    echo $(cEcho "publish" info)
+    # options
+    while [[ "$1" =~ ^- && ! "$1" == "--" ]]; do case $1 in
+    -h | --help ) echo "$usageGenerateClient"  && exit 0 ;;
+    esac; shift; done
+    if [[ "$1" == '--' ]]; then shift; fi
+
+    local services=()
+    if [[ $1 == "" ]]; then
+        local dirname=$(pwd | sed 's/.*\///')
+        local serviceName=$(echo $dirname | sed 's/server//g')
+        services=($serviceName)
+    else
+        services=($(echo $1 | cut -d= -f2 | tr ',' ' '))
+    fi
+
+    if [[ ${#services[@]} -eq 0 ]]; then
+        echo $(cEcho "服务名不能为空 多个用,隔开" error)
+        exit;
+    fi
+
+    if [[ $2 == "" ]]; then
+        echo $(cEcho "备注不能为空" error)
+        exit;
+    fi
+
+    local remark=$2
+    local branchName="test"
+    if [[ $# -eq 3 ]]; then
+        branchName=$3
+    fi
+
+    local allPkgs=()
+    for service in "${services[@]}"; do
+        echo
+        echo $(cEcho "$service" info)
+
+        divider
+        cd "$qlWpDir/$service"server || exit
+        git checkout $branchName
+        git pull origin $branchName
+        local commitHash=$(git rev-parse HEAD)
+        #console.sh pkg || exit
+        local pkgName="$service-$branchName-${commitHash:0:8}.tar.gz"
+        #console.sh store "$pkgName" "$remark" || exit
+        allPkgs+=($pkgName)
+    done
+
+
+    joinBy $'\n' "${allPkgs[@]}"
+    echo 
+
 }
 
-#todo
+usageGenerateSimple="$(cEcho generate info): gg,gen 生成服务"
+usageGenerate=$(cat <<-END
+$(cEcho generate info): gg 生成服务
+    $(cEcho "[服务名 多个用,隔开]" option): 生成服务
+    eg: generate service1
+END
+)
 Generate() {
-    echo $(cEcho "generate" info)
+     # options
+    while [[ "$1" =~ ^- && ! "$1" == "--" ]]; do case $1 in
+    -h | --help ) echo "$usageGenerate"  && exit 0 ;;
+    esac; shift; done
+    if [[ "$1" == '--' ]]; then shift; fi
+
+    divider
+    GenerateClient "$@"
+
+    divider
+    GenerateServer "$@"
+}
+
+usageGenerateClientSimple="$(cEcho generateclient info): gc,genc 生成客户端"
+usageGenerateClient=$(cat <<-END
+$(cEcho generateclient info): ggc 生成客户端
+    $(cEcho "[服务名 多个用,隔开]" option): 生成客户端
+    eg: generateclient service1
+END
+)
+GenerateClient() {
+    # options
+    while [[ "$1" =~ ^- && ! "$1" == "--" ]]; do case $1 in
+    -h | --help ) echo "$usageGenerateClient"  && exit 0 ;;
+    esac; shift; done
+    if [[ "$1" == '--' ]]; then shift; fi
+
+    local services=()
+    if [[ $1 == "" ]]; then
+        local dirname=$(pwd | sed 's/.*\///')
+        local serviceName=$(echo $dirname | sed 's/server//g')
+        services=($serviceName)
+    else
+        services=($(echo $1 | cut -d= -f2 | tr ',' ' '))
+    fi
+    
+    if [[ ${#services[@]} -eq 0 ]]; then
+        echo $(cEcho "服务名不能为空 多个用,隔开" error)
+        exit;
+    fi
+
+    echo $(cEcho "generate client: ${services[*]}" info)
+
+    for service in "${services[@]}"; do
+        echo
+        echo $(cEcho "$service" info)
+
+        divider
+        echo $(cEcho "rpc_gen -f GenClient -p $qlPbDir/${service}.proto " info)
+        rpc_gen -f GenClient -p $qlPbDir/${service}.proto 
+        divider
+    done
+}
+
+usageGenerateServerSimple="$(cEcho generateserver info): gs,gens 生成服务端"
+usageGenerateServer=$(cat <<-END
+$(cEcho generateserver info): ggs 生成服务端
+    $(cEcho "[服务名 多个用,隔开]" option): 生成服务端
+    eg: generateserver service1
+END
+)
+GenerateServer() {
+    # options
+    while [[ "$1" =~ ^- && ! "$1" == "--" ]]; do case $1 in
+    -h | --help ) echo "$GenerateServer"  && exit 0 ;;
+    esac; shift; done
+    if [[ "$1" == '--' ]]; then shift; fi
+
+    local services=()
+    if [[ $1 == "" ]]; then
+        local dirname=$(pwd | sed 's/.*\///')
+        local serviceName=$(echo $dirname | sed 's/server//g')
+        services=($serviceName)
+    else
+        services=($(echo $1 | cut -d= -f2 | tr ',' ' '))
+    fi
+
+    if [[ ${#services[@]} -eq 0 ]]; then
+        echo $(cEcho "服务名不能为空 多个用,隔开" error)
+        exit;
+    fi
+
+    echo $(cEcho "generate server: ${services[*]}" info)
+
+    for service in "${services[@]}"; do
+        echo
+        echo $(cEcho "$service" info)
+
+        divider
+        echo $(cEcho "rpc_gen -f GenServer -p $qlPbDir/${service}.proto" info)
+        rpc_gen -f GenServer -p $qlPbDir/${service}.proto 
+        divider
+    done
 }
 
 usageRunSimple="$(cEcho run info): r 运行服务"
@@ -436,9 +632,6 @@ END
 Run() {
     while [[ "$1" =~ ^- && ! "$1" == "--" ]]; do case $1 in
     -h | --help ) echo "$usageRun" && exit 0;;
-    -n | --name )
-        local isName=1
-        ;;
     esac; shift; done
     if [[ "$1" == '--' ]]; then shift; fi
 
@@ -500,9 +693,27 @@ BuildTool() {
     fi
 }
 
-#todo
+usagePkgSimple="$(cEcho pkg info): p 打包"
+usagePkg=$(cat <<-END
+$(cEcho pkg info): p 打包
+    $(cEcho "[服务名,没有则生成当前文件的服务]" option)
+    eg: p
+        p service1
+END
+)
 Pkg() {
-    echo $(cEcho "pkg" info)
+    while [[ "$1" =~ ^- && ! "$1" == "--" ]]; do case $1 in
+    -h | --help ) echo "$usagePkg" && exit 0;;
+    esac; shift; done
+    if [[ "$1" == '--' ]]; then shift; fi
+
+    if [[ $1 != "" ]]; then
+        local serviceName=$1
+        cd "$qlWpDir/$serviceName"server
+        console.sh pkg
+    else
+        console.sh pkg
+    fi
 }
 
 usageSyncSimple="$(cEcho sync info): s 同步服务,仅dev环境"
@@ -588,14 +799,99 @@ Sync() {
     echo $(cEcho "同步成功" success)
 }
 
-#todo
+usageUpdateModSimple="$(cEcho updatemod info): um 更新go.mod"
+usageUpdateMod=$(cat <<-END
+$(cEcho updatemod info): 更新go.mod
+    $(cEcho "([服务名])" option)
+    eg: updatemod service1,service2
+        updatemod group1
+END
+)
 UpdateMod() {
-    echo $(cEcho "updatemodules" info)
+    # options
+    while [[ "$1" =~ ^- && ! "$1" == "--" ]]; do case $1 in
+    -h | --help ) echo "$usageUpdateMod"  && exit 0 ;;
+    esac; shift; done
+    if [[ "$1" == '--' ]]; then shift; fi
+
+    if [[ $1 == "" ]]; then
+        rpc_gen -f UpdateAllMod 
+        exit 0
+    fi
+
+    if [[ $1 == g* ]]; then
+        if [[ -f $qlGroupFile ]]; then
+            local group=$(grep ${str:1:${#str}}= $qlGroupFile)
+            if [[ $group != "" ]]; then
+                echo ${group:3:${#group}}
+                services=($(echo ${group:3:${#group}} | cut -d= -f2 | tr ',' ' '))
+            fi
+        else
+            echo $(cEcho "$qlGroupFile 不存在" error)
+            exit
+        fi
+    else
+        services=($(echo $str | cut -d= -f2 | tr ',' ' '))
+    fi
+
+    if [[ ${#services[@]} -eq 0 ]]; then
+        echo $(cEcho "服务不能为空" error)
+        exit
+    fi
+
+    for service in ${services[@]}; do
+        echo $(cEcho "服务: $service" info)
+        divider
+        local clientPath=$qlWpDir/${service}
+        if [[ ! -d $clientPath ]]; then
+            echo $(cEcho "$clientPath not exists" error)
+            exit 1
+        fi
+        cd $clientPath
+        rpc_gen -f UpdateAllMod || echo $(cEcho "UpdateMod失败" error) && exit 1
+         
+        divider
+        local serverPath=$qlWpDir/${service}server
+        if [[ ! -d $serverPath ]]; then
+            echo $(cEcho "$serverPath not exists" error)
+            exit 1
+        fi
+        cd $serverPath
+        rpc_gen -f UpdateAllMod || echo $(cEcho "UpdateMod失败" error) && exit 1
+    done
 }
 
-#todo
+usageInitSimple="$(cEcho init info): 初始化"
+usageInit=$(cat <<-END
+$(cEcho init info): 初始化
+    $(cEcho "(服务名)" required)
+    eg: init service
+END
+)
 Init() {
-    echo $(cEcho "init" info)
+    while [[ "$1" =~ ^- && ! "$1" == "--" ]]; do case $1 in
+    -h | --help ) echo "$usageInit" && exit 0;;
+    esac; shift; done
+    if [[ "$1" == '--' ]]; then shift; fi
+
+    if [[ $1 == "" ]]; then
+        echo $(cEcho "服务名不能为空" error)
+        exit 1
+    fi
+
+    local serviceName=$1
+    registerTxt="$qlPbDir/server_register.txt"
+    if ! grep "^$serviceName" "$registerTxt"; then
+      port=$(tail -n 1 "$registerTxt" | awk -F" " '{print $2}')
+      errcode=$(tail -n 1 "$registerTxt" | awk -F" " '{print $NF}')
+      echo "$serviceName $(($port+1)) $errcode - $(($errcode+1000))" >> "$registerTxt"
+    fi
+
+    if [ ! -f "$qlPbDir/$serviceName.proto" ]; then
+      rpc_gen -f Init -n "$serviceName"
+    fi
+    
+    GitClone "$serviceName"
 }
 
 usageSshSimple="$(cEcho ssh info): go 登录服务器"
@@ -607,7 +903,7 @@ END
 )
 Ssh() {
     while [[ "$1" =~ ^- && ! "$1" == "--" ]]; do case $1 in
-    -h | --help ) echo "$usageSshSimple" && exit 0;;
+    -h | --help ) echo "$usageSsh" && exit 0;;
     esac; shift; done
     if [[ "$1" == '--' ]]; then shift; fi
 
@@ -670,9 +966,52 @@ Log() {
     echo $(cEcho "log" info)
 }
 
-#todo
+usageAddRpcSimple="$(cEcho addrpc info): 添加rpc"
+usageAddRpc=$(cat <<-END
+$(cEcho addRpc info): 添加rpc
+    $(cEcho "(服务名)" require) $(cEcho "(接口名)" require) $(cEcho "(接口生成路径)" require) $(cEcho "[接口级别]" option)
+    eg: addrpc service1 sayHello hello_api
+        addrpc service1 sayHello hello_api staff
+END
+)
 AddRpc() {
-    echo $(cEcho "addrpc" info)
+    while [[ "$1" =~ ^- && ! "$1" == "--" ]]; do case $1 in
+    -h | --help ) echo "$usageAddRpc" && exit 0;;
+    esac; shift; done
+    if [[ "$1" == '--' ]]; then shift; fi
+
+    if [ "$1" == "" ]; then
+        echo "服务名不能为空"
+        exit
+    fi
+    if [ "$2" == "" ]; then
+        echo "接口名不能为空"
+        exit
+    fi
+    if [ "$3" == "" ]; then
+        echo "生成文件路径不能为空"
+        exit
+    fi
+
+    serviceName=$1
+    rpcName=$2
+    genTo=$3
+    user=""
+
+    if [ "$4" == "" ]; then
+        user=$4
+    fi
+
+    cd "$qlPbDir" || exit
+
+    if [ "$4" != "" ]; then
+        rpc_gen -f AddRpc -p "$serviceName".proto -r "$rpcName" -g "$genTo" -u "$user"
+    else
+        case "$rpcName" in
+            *Sys )  rpc_gen -f AddRpc -p "$serviceName".proto -r "$rpcName" -g "$genTo" -u sys;;
+            * ) rpc_gen -f AddRpc -p "$serviceName".proto -r "$rpcName" -g "$genTo";;
+        esac
+    fi
 }
 
 #todo
@@ -685,24 +1024,24 @@ usage=$(cat <<-END
 Usage: $0 [command]
 
 Commands:
+    $usagePublishSimple
+    $usageUpdateModSimple
+    $usageGenerateSimple
+    $usageInitSimple
+    $usageAddRpcSimple
+    $usageGenerateServerSimple
+    $usageGenerateClientSimple
+    $usagePkgSimple
     $usageSyncSimple
-
     $usageRunSimple
-
     $usageBuildToolSimple
-
     $usageSshSimple
-
     $usageInstallSimple
-
     $usageConfSimple
-
     $usageGitPullSimple
-
     $usageGitCloneSimple
-
     $usageGitBranchSimple
-
+    $usageGitPushSimple
     $usageSimple
 END
 )
@@ -777,9 +1116,19 @@ case "$1" in
         Publish $@
         ;;
 
-    generate | gen)
+    generate | gen | gg)
         shift
         Generate $@
+        ;;
+
+    generateclient | genc | gc)
+        shift
+        GenerateClient $@
+        ;;
+    
+    generateserver | gens | gs)
+        shift
+        GenerateServer $@
         ;;
 
     run | r)
@@ -792,7 +1141,7 @@ case "$1" in
         BuildTool $@
         ;;
 
-    pkg)
+    pkg | p)
         shift
         Pkg $@
         ;;
