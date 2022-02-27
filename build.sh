@@ -11,6 +11,7 @@ do
         then
             cp -r $scriptName$version.sh lastest/$scriptName.sh
             sed -i '' "s/^version=.*/version='$version'/g" lastest/$scriptName.sh
+            echo "$scriptName $version build success"
         else
             echo "File not found: $scriptName$version.sh"
             continue

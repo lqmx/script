@@ -700,7 +700,7 @@ Log() {
 main() {
     if [[ $# -lt 1 ]]; then
         echo Hello, $(cecho greet "$username") 
-        echo "Please enter a command."
+        echo "Version: $version"
         safeExit
     fi
 
