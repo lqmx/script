@@ -22,7 +22,7 @@ Params:
 
     generate:
         init, i                         $(cecho optional '[service,...]')
-        addrpc, arp                     $(cecho required '[service]') $(cecho required '[rpcname]') $(cecho required '[gento]') $(cecho optional '[user:sys,staff]')
+        addrpc, arp                     $(cecho required '(service)') $(cecho required '(rpcname)') $(cecho required '(gento)') $(cecho optional '[user:sys,staff]')
         generate, gen, g                $(cecho optional '[service,...|group]')
         generateclient, genc, gc        $(cecho optional '[service,...]')
         generateserver, gens, gs        $(cecho optional '[service,...]')
@@ -36,8 +36,8 @@ Params:
 
     ops:
         deploy, d                       $(cecho required '(service,...) (remark)') $(cecho optional '[barnch:test,master]')
-        ssh, go                         $(cecho required '(service:dev,test,tdev,ttest,j)')
-        log, l                          $(cecho required '(reqid)') $(cecho optional '[servergroup:dev,test]]') 
+        ssh, go                         $(cecho required '(server:dev,test,tdev,ttest,j)')
+        log, l                          $(cecho required '(reqid)') $(cecho optional '[servergroup:dev,test]') 
 
 EOF
 }
@@ -140,7 +140,7 @@ cecho() {
         "red" | "err")
             echo -e "${Red}$2${NC}"
             ;;
-        "green" | "ok" | "greet")
+        "green" | "ok" | "greet" | "required")
             echo -e "${Green}$2${NC}"
             ;;
         "orange" | "warn")
@@ -152,7 +152,7 @@ cecho() {
         "purple")
             echo -e "${Purple}$2${NC}"
             ;;
-        "cyan" | "debug")
+        "cyan" | "debug" | "optional")
             echo -e "${Cyan}$2${NC}"
             ;;
         "lightgray")
@@ -164,13 +164,13 @@ cecho() {
         "lightred")
             echo -e "${LightRed}$2${NC}"
             ;;
-        "lightgreen" | "required")
+        "lightgreen")
             echo -e "${LightGreen}$2${NC}"
             ;;
         "yellow")
             echo -e "${Yellow}$2${NC}"
             ;;
-        "lightblue" | "optional")
+        "lightblue")
             echo -e "${LightBlue}$2${NC}"
             ;;
         "lightpurple")
