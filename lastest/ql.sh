@@ -6,11 +6,15 @@
 # License: GPL-3
 #
 ####################################################
+# Base Variables
+version='v1.0.0'
+scriptName="ql"
+scriptPath="$(cd "$(dirname "${BASH_SOURCE[0]}")" &>/dev/null && pwd -P)"
+
 Usage() {
     cat <<EOF
 Usage:
-    Usage: $(basename "${BASH_SOURCE[0]}") arg1 [arg2...]
-
+    Usage: $scriptName arg [arg,...]
 Options:
     
 Params:
@@ -19,61 +23,30 @@ Params:
         gitclone, clone, gcl, cl        $(cecho required '(service,...)')
         gitbranch, branch, gbr, br      $(cecho optional '[branch] [service,...]')
         gitpush, push, gph, ph          $(cecho optional '[service,...]')
-
     generate:
         init, i                         $(cecho optional '[service,...]')
         addrpc, arp                     $(cecho required '[service]') $(cecho required '[rpcname]') $(cecho required '[gento]') $(cecho optional '[user:sys,staff]')
         generate, gen, g                $(cecho optional '[service,...|group]')
         generateclient, genc, gc        $(cecho optional '[service,...]')
         generateserver, gens, gs        $(cecho optional '[service,...]')
-
     dev:
         updatemod, upm, um              $(cecho optional '[service,...]')
         run, r                          $(cecho optional "[service] [os] [server:dev,test,tdev,ttest]")
         buildtool, bt                   $(cecho optional '[service]')
         package, pkg                    $(cecho optional '[service]')
         sync, s                         $(cecho optional '[service] [branch]')
-
     ops:
-        deploy, d                       $(cecho required '(service,...) (remark)') $(cecho optional '[barnch:test,master]')
+        deploy, d                       $(cecho required '(service,...) (remark)') $(cecho optional '[branch:test,master]')
         ssh, go                         $(cecho required '(service:dev,test,tdev,ttest,j)')
-        log, l                          $(cecho required '(reqid)') $(cecho optional '[servergroup:dev,test]]') 
-
+        log, l                          $(cecho required '(reqid)') $(cecho optional '[servergroup:dev,test]')
 EOF
 }
+
 # Variables
-version='v1'
-scriptName="ql"
-scriptPath="$(cd "$(dirname "${BASH_SOURCE[0]}")" &>/dev/null && pwd -P)"
-utilsLocalPath="$scriptPath/utils.sh"
-
-# baseDir="$HOME"
-baseDir="./"
-confDir="$baseDir/.ql"
-confFile="$confDir/config.sh"
-tmpDir="$confDir/tmp"
-logFile="$tmpDir/$(date +%Y%m%d).$RANDOM.$$.log"
-
-# Init config and tmp dir
-if [[ ! -d $confDir ]]; then
-    mkdir -p $confDir
-fi
-
-if [[ ! -d $tmpDir ]]; then
-    mkdir -p $tmpDir
-fi
-
-if [[ -f "$confFile" ]]; then
-    source "$confFile"
-else
-    cat << EOF > "$confFile"
-#!/bin/bash
-# 
-username="$USER"
-templatePath=
-sourceDir=
+username=$USER
 workDir=
 pbDir=
+gitLabUrl=
 devIp=
 devUser=
 devPort=
@@ -92,13 +65,58 @@ jIp=
 jUser=
 jPort=
 
+
+# baseDir="$HOME"
+baseDir=$scriptPath
+confDir="$baseDir/.ql"
+confFile="$confDir/config.sh"
+tmpDir="$confDir/tmp"
+#logFile="$tmpDir/$(date +%Y%m%d).$RANDOM.$$.log"
+
+# Init config and tmp dir
+if [[ ! -d $confDir ]]; then
+    mkdir -p "$confDir"
+fi
+
+if [[ ! -d $tmpDir ]]; then
+    mkdir -p "$tmpDir"
+fi
+
+if [[ -f "$confFile" ]]; then
+    # shellcheck disable=SC1090
+    . "${confFile}"
+else
+    cat << EOF > "$confFile"
+#!/bin/bash
+# 
+username="$USER"
+username=
+workDir=
+pbDir=
+gitLabUrl=
+devIp=
+devUser=
+devPort=
+testIp=
+testUser=
+testPort=
+tDevIp=
+tDevUser=
+tDevPort=
+tTestIp=
+tTestUser=
+tTestPort=
+syncToolUser=
+syncToolDir=
+jIp=
+jUser=
+jPort=
 export HOST_DEV=
 export TEMPLATE_PATH=
-
 # group
 # eg: group1=service1,service2,service3
-
 EOF
+    # shellcheck disable=SC1090
     source "$confFile"
 fi
 
@@ -113,7 +131,6 @@ joinBy() {
     shift
     echo "$*"
 }
-
 cecho() {
     Black='\033[0;30m'
     Red='\033[0;31m'
@@ -133,6 +150,7 @@ cecho() {
     White='\033[1;37m'
 
     NC='\033[0m' # No Color
+#    content="$(echo "$2" | awk '{print toupper($2)}')"
     case $1 in
         "black")
             echo -e "${Black}$2${NC}"
@@ -192,7 +210,6 @@ die() {
     cecho red "$1"
     exit 1
 }
-
 safeExit() {
     exit 0
 }
@@ -200,35 +217,57 @@ cleanup() {
   trap - SIGINT SIGTERM ERR EXIT
   # script cleanup here
 }
-getservice() {
+getService() {
     local services=();
     if [[ $# -eq 0 ]]; then
-        local dirname=$(pwd | sed 's/.*\///')
-        local serviceName=$(echo $dirname | sed 's/server//g')
-        services=($serviceName)
+      while IFS='' read -r line; do services+=("$line"); done < <(basename "$(pwd)" | sed 's/server//g')
     else
         if [[ $1 == gg* ]]; then
-            local str=$1
-            local group=$(grep ${str:1:${#str}}= $confFile)
-            if [[ $group != "" ]]; then
-                services=($(echo ${group:3:${#group}} | cut -d= -f2 | tr ',' ' '))
-            fi
+          IFS=" " read -r -a services <<< "$(grep "${1:1:${#1}}=" "$confFile" | awk -F= '{print $2}' | tr ',' ' ')"
         else
-            services=($(echo $1 | cut -d= -f2 | tr ',' ' '))
+          IFS=" " read -r -a services <<< "$(echo "$1" | cut -d= -f2 | tr ',' ' ')"
         fi
     fi
-
     declare -p services
+}
+commitCode() {
+    cecho debug "Commit code..."
+    if [[ $(git status -s) != "" ]]; then
+        git status
+	    git add .
+        git commit -m 'ok'
+	  fi
+	  git push
+}
+sedX() {
+    if [[ $(uname) == "Darwin" ]]; then
+        sed -i '' "$1" "$2"
+    else
+        sed -i "$1" "$2"
+    fi
 }
 
 # Function
+Test() {
+    local services=()
+    eval "$(getService "$@")"
+    if [[ ${#services[@]} -eq 0 ]]; then
+        die "No service specified"
+    fi
 
+    for service in "${services[@]}"; do
+      echo "$service"
+    done
+
+    cecho debug "Services: $(joinBy , "${services[@]}")"
+
+}
 ## Pull code
 #
 # Alias: gitpull, pull, gpl pl
 # Params:
 # * $1 - optional, service or service group
-#        service spilted by ,
+#        service spilt by ,
 #        service group will be set in config.sh
 # Example:
 #   gitpull
@@ -238,22 +277,29 @@ getservice() {
 # * 0 - successfully
 # * 1 - failed
 GitPull() {
+    cecho debug "Git Pull..."
+
+    if [[ $# == 0 ]]; then
+      git pull
+      safeExit
+    fi
     local services=()
-    eval $(getservice "$@")
+    eval "$(getService "$@")"
     if [[ ${#services[@]} -eq 0 ]]; then
         die "No service specified"
     fi
 
     for service in "${services[@]}"; do
         divider
+        cecho debug "$service"
         if [[ -d "$workDir/$service" ]]; then
-            cecho info "Pulling Client $service"
+            cecho debug "Pulling Client $service"
             cd "$workDir/$service"
             git pull
         fi
         divider
         if [[ -d "$workDir/$service"server ]]; then
-            cecho info "Pulling Server $service"
+            cecho debug "Pulling Server $service"
             cd "$workDir/$service"server
             git pull
         fi
@@ -261,29 +307,30 @@ GitPull() {
 
 }
 GitClone() {
+    cecho debug "Git Clone..."
     local services=()
-    eval $(getservice "$@")
+    eval "$(getService "$@")"
     if [[ ${#services[@]} -eq 0 ]]; then
         die "No service specified"
     fi
 
     for service in "${services[@]}"; do
         divider
-        cecho info "$service"
+        cecho debug "$service"
         if [[ ! -d "$workDir/$service" ]]; then
-            cecho info "git clone $gitLabUrl/$service"
-            git clone $gitLabUrl/$service $workDir/$service
+            cecho debug "Git clone $gitLabUrl/$service"
+            git clone "$gitLabUrl/$service" "$workDir/$service"
         else
-            cecho info "git pull $workDir/$service"
-            cd $workDir/$service
+            cecho debug "Git pull $workDir/$service"
+            cd "$workDir/$service"
             git pull
         fi
         divider
         if [[ ! -d "$workDir/$service"server ]]; then
-            cecho info "git clone $gitLabUrl/$service"server
+            cecho debug "Git clone $gitLabUrl/$service"server
             git clone "$gitLabUrl/$service"server "$workDir/$service"server
         else
-            cecho info "git pull $workDir/$service"server
+            cecho debug "Git pull $workDir/$service"server
             cd "$workDir/$service"server
             git pull
         fi
@@ -291,6 +338,7 @@ GitClone() {
     done
 }
 GitBranch() {
+    cecho debug "Git Branch..."
     local branchName=""
     if [[ $# -eq 0 ]]; then
         die "No branch specified"
@@ -299,57 +347,66 @@ GitBranch() {
     shift
 
     local services=()
-    eval $(getservice "$@")
+    eval "$(getService "$@")"
     if [[ ${#services[@]} -eq 0 ]]; then
         die "No service specified"
     fi
 
+    cecho debug "BranchName: $branchName"
+
     for service in "${services[@]}"; do
-        cecho info "$service"
+        cecho debug "$service"
         divider
         if [[ ! -d "$workDir/$service"server ]]; then
-            cecho info "git clone $gitLabUrl/$service"server
+            cecho debug "Git clone $gitLabUrl/$service"server
             git clone "$gitLabUrl/$service"server "$workDir/$service"server
         fi
 
         cd "$workDir/$service"server
+        cecho debug "Checkout master"
         git checkout master
+        cecho debug "Pull"
         git pull
-        git checkout -b $branchName
-        git push --set-upstream origin $branchName
-
+        git checkout -b "$branchName"
+        cecho debug "Push Orgin"
+        git push --set-upstream origin "$branchName"
         divider
     done
-    
-    echo
 }
 GitPush() {
+    cecho debug "Git Push..."
+    if [[ $# == 0 ]]; then
+      # todo remove
+      sedX 's/^#.*//' "$confFile"
+      commitCode
+      safeExit
+    fi
+
     local services=()
-    eval $(getservice "$@")
+    eval "$(getService "$@")"
     if [[ ${#services[@]} -eq 0 ]]; then
         die "No service specified"
     fi
 
     for service in "${services[@]}"; do
         divider
-        cecho info "$service"
+        cecho debug "$service"
         if [[ ! -d "$workDir/$service" ]]; then
             cecho warn "No git repo found for $service"
         else
-            cecho info "git pull $workDir/$service"
-            cd $workDir/$service
+            cecho debug "Git pull $workDir/$service"
+            cd "$workDir/$service"
             git pull
             # todo remove
-            sed -i "s/\!\*\.\*//g"  .gitignore
-	        git status
-            git commit -am 'ok'
-            git push
+            sedX "s/\!\*\.\*//g" .gitignore
+	        commitCode
         fi
     done
 }
 GitMerge() {
+  cecho debug "Git Merge..."
     local services=()
-    eval $(getservice "$@")
+    eval "$(getService "$@")"
     if [[ ${#services[@]} -eq 0 ]]; then
         die "No service specified"
     fi
@@ -357,11 +414,13 @@ GitMerge() {
     if [[ $2 == "" ]]; then
         die "No branch specified"
     fi
-    $branchName=$2
+    branchName=$2
 
     for service in "${services[@]}"; do
+        cecho debug "Merge $branchName"
         git merge "origin/$branchName"
-        local mergeConflictFiles=$(git diff --name-only --diff-filter=U)
+        local mergeConflictFiles
+        mergeConflictFiles=$(git diff --name-only --diff-filter=U)
         if [[ $mergeConflictFiles != "" ]]; then
             cecho warn "Merge conflict found for $service: $mergeConflictFiles"
         fi
@@ -370,13 +429,14 @@ GitMerge() {
                 die "Merge conflict found for $service: $file"
             fi
             cecho warn "Solve conflict for $service: $file"
-            git checkout HEAD $file
+            git checkout HEAD "$file"
         done
     done
 }
 Init() {
+    cecho debug "Init..."
     local services=()
-    eval $(getservice "$@")
+    eval "$(getService "$@")"
     if [[ ${#services[@]} -eq 0 ]]; then
         die "No service specified"
     fi
@@ -385,43 +445,49 @@ Init() {
     for i in "${!services[@]}"; do
         local service=${services[$i]}
         divider
-        cecho info "$service"
+        cecho debug "$service"
         if ! grep "^$service " "$registerTxt"; then
+            local port
+            local errcode
             port=$(tail -n 1 "$registerTxt" | awk -F" " '{print $2}')
             errcode=$(tail -n 1 "$registerTxt" | awk -F" " '{print $NF}')
-            cecho info "$service $(($port+$i+1)) $errcode - $(($errcode+1000*($i+1)))"
-            echo "$service $(($port+1)) $errcode - $(($errcode+1000))" >> "$registerTxt"
+            cecho debug "Write to file: $service $(("$port"+"$i"+1)) $errcode - $(("$errcode"+1000*("$i"+1)))"
+            echo "$service $(("$port"+1)) $errcode - $(("$errcode"+1000))" >> "$registerTxt"
         fi
 
         if [[ ! -f "$pbDir/$service" ]]; then
             rpc_gen -f Init -n "$service"
         fi
 
-        GitClone $service
+        GitClone "$service"
     done
 }
 AddRpc() {
+  cecho debug "AddRpc..."
     local services=()
-    eval $(getservice "$@")
+    eval "$(getService "$@")"
     if [[ ${#services[@]} -eq 0 ]]; then
         die "No service specified"
     fi
 
-    if [[ $2 == "" ]]; then
+    if [[ $# -lt 2 ]] || [[ $2 == "" ]]; then
         die "No rpc name specified"
     fi
 
-    if [[ $3 == "" ]]; then
+    if [[ $# -lt 3 ]] || [[ $3 == "" ]]; then
         die "No gento specified"
     fi
 
     local rpcName=$2
     local genTo=$3
-    local user=$4
+    local user=
+    if [[ $# -gt 3 ]]; then
+      user=$4
+    fi
 
     for service in "${services[@]}"; do
         divider
-        cecho info "$service"
+        cecho debug "$service"
         cd "$pbDir"
         if [[ $user != "" ]]; then
             rpc_gen -f AddRpc -p "$service".proto -r "$rpcName" -g "$genTo" -u "$user"
@@ -434,52 +500,57 @@ AddRpc() {
     done
 }
 Generate() {
-    cecho info "Generate Client"
+    cecho debug "Generate..."
+    cecho debug "Generate Client"
     GenerateClient "$@"
-    cecho info "Generate Server"
+    cecho debug "Generate Server"
     GenerateServer "$@"
 }
 GenerateClient() {
+   cecho debug "Generate Client..."
     local services=()
-    eval $(getservice "$@")
+    eval "$(getService "$@")"
     if [[ ${#services[@]} -eq 0 ]]; then
         die "No service specified"
     fi
 
     for service in "${services[@]}"; do
         divider
-        cecho info "$service"
-        rpc_gen -f GenClient -p $pbDir/${service}.proto 
+        cecho debug "$service"
+        rpc_gen -f GenClient -p "$pbDir/${service}.proto"
+        ig field -o "$service"
     done
 }
 GenerateServer() {
+    cecho debug "Generate Server..."
     local services=()
-    eval $(getservice "$@")
+    eval "$(getService "$@")"
     if [[ ${#services[@]} -eq 0 ]]; then
         die "No service specified"
     fi
 
     for service in "${services[@]}"; do
         divider
-        cecho info "$service"
-        rpc_gen -f GenServer -p $pbDir/${service}.proto 
+        cecho debug "$service"
+        rpc_gen -f GenServer -p "$pbDir/${service}.proto"
     done
 }
 UpdateMod() {
+    cecho debug "UpdateMod..."
     local services=()
-    eval $(getservice "$@")
+    eval "$(getService "$@")"
     if [[ ${#services[@]} -eq 0 ]]; then
         die "No service specified"
     fi
 
-    for service in ${services[@]}; do
+    for service in "${services[@]}"; do
         divider
-        cecho info "$service"
+        cecho debug "$service"
         local clientPath=$workDir/${service}
         if [[ ! -d $clientPath ]]; then
             die "No client repo found for $service"
         fi
-        cd $clientPath
+        cd "$clientPath"
         rpc_gen -f UpdateAllMod
          
         divider
@@ -487,27 +558,29 @@ UpdateMod() {
         if [[ ! -d $serverPath ]]; then
             die "No server repo found for $service"
         fi
-        cd $serverPath
+        cd "$serverPath"
         rpc_gen -f UpdateAllMod
     done
 }
 Run() {
-    if [[ $1 != "" ]]; then
+    cecho debug "Run..."
+    if [[ $# -gt 1 ]] && [[ $1 != "" ]]; then
         cd "$workDir/$1"server || die "No such service"
     fi
     console.sh run
 }
 BuildTool() {
+    cecho debug "BuildTool..."
     local services=()
-    eval $(getservice "$@")
+    eval "$(getService "$@")"
     if [[ ${#services[@]} -eq 0 ]]; then
         die "No service specified"
     fi
 
     for service in "${services[@]}"; do
         divider
-        cecho info "$service"
-        cd "$workDir/$service"server
+        cecho debug "$service"
+        cd "$workDir/$service"server/tool
         # build
         if [[ $2 != "" ]]; then
             GOOS=$2 tools_builder -f "${service}_tool.go"
@@ -528,35 +601,38 @@ BuildTool() {
             else
                 ip=$3
             fi
-            cecho info "scp ${service}_tool $syncToolUser@$ip:$syncToolDir"
-            scp "${service}_tool" $syncToolUser@"$ip":$syncToolDir
+            cecho debug "Scp ${service}_tool $syncToolUser@$ip:$syncToolDir"
+            scp "${service}_tool" "$syncToolUser"@"$ip":"$syncToolDir"
+            cecho debug "Remove ${service}_tool"
             rm "${service}_tool"
         fi
     done
     
 }
 Package() {
+    cecho debug "Package..."
     local services=()
-    eval $(getservice "$@")
+    eval "$(getService "$@")"
     if [[ ${#services[@]} -eq 0 ]]; then
         die "No service specified"
     fi
     
     for service in "${services[@]}"; do
         divider
-        cecho info "$service"
+        cecho debug "$service"
         cd "$workDir/$service"server || die "No such service"
         console.sh pkg
     done
 }
 Sync() {
+    cecho debug "Sync..."
     local services=()
     if [[ $# -eq 0 ]]; then
-        local dirname=$(pwd | sed 's/.*\///')
-        local serviceName=$(echo $dirname | sed 's/server//g')
-        services=($serviceName)
+        local dirname
+        dirname=$(pwd | sed 's/.*\///')
+        services=("${dirname//server/}")
     else
-        eval $(getservice "$@")
+        eval "$(getService "$@")"
     fi
     if [[ ${#services[@]} -eq 0 ]]; then
         die "No service specified"
@@ -564,82 +640,94 @@ Sync() {
 
     local branchName=dev
     if [[ ${#services[@]} == 1 ]]; then
-        local currentBranch=$(git rev-parse --abbrev-ref HEAD)
+        local currentBranch
+        currentBranch=$(git rev-parse --abbrev-ref HEAD)
         if [[ $currentBranch != "dev" ]]; then
             if [[ $(git status -s) != "" ]]; then
-                sed -i "" "s/\(.*\)\/\/\(todo for dev.*\)/\/\/\1\/\/\2/g" go.mod 
+                cecho debug "Remove todo in go.mod"
+                sedX -i "s/\(.*\)\/\/\(todo for dev.*\)/\/\/\1\/\/\2/g" go.mod
                 cecho warn "Commit changes before sync"
-                git commit -am "ok"
-                git push
+                commitCode
             fi
         fi
+        branchName=$currentBranch
     fi
 
-    if [[ $2 != "" ]]; then
-        branchName=$2
+    if [[ $# -gt 1 ]]; then
+      branchName=$2
     fi
-    
+
+    cecho debug "BranchName: $branchName"
     for service in "${services[@]}"; do
         divider
-        cecho info "$service"
+        cecho debug "$service"
         cd "$workDir/$service"server || die "No such service"
+        cecho debug "Switch dev..."
         git checkout dev
+        cecho debug "Pull code..."
         git pull
         if [[ $branchName != "dev" ]] && [[ $branchName != "" ]]; then
-            if ! GitMerge $service $branchName; then
+            if ! GitMerge "$service" "$branchName"; then
                 die "Merge failed"
             fi
+        fi
 
-            rpc_gen -f UpdateAllMod
-            console.sh sync
+        cecho debug "UpdateAllMod..."
+        rpc_gen -f UpdateAllMod
+        cecho debug "Sync code..."
+        console.sh sync
 
-            if [[ $(git status | grep -c "nothing to commit") -eq 0 ]]; then
-                git commit -am "ok"
-                git push origin dev
-            fi
+        if [[ $(git status | grep -c "nothing to commit") -eq 0 ]]; then
+            commitCode
+        fi
 
-            if [[ $branchName != "dev" ]] && [[ $branchName != "" ]]; then
-                git checkout "$branchName"
-                sed -i "" "s/\/\/\(.*\)\/\/\(todo for dev.*\)/\1\/\/\2/g" go.mod
-            fi
+        if [[ $branchName != "dev" ]] && [[ $branchName != "" ]]; then
+            git checkout "$branchName"
+            cecho debug "reset todo in go.mod"
+            sedX -i "s/\/\/\(.*\)\/\/\(todo for dev.*\)/\1\/\/\2/g" go.mod
         fi
     done
 }
 Deploy() {
+    cecho debug "Deploy..."
     local services=()
-    eval $(getservice "$@")
+    eval "$(getService "$@")"
     if [[ ${#services[@]} -eq 0 ]]; then
         die "No service specified"
     fi
 
-    if [[ $2 == "" ]]; then
+    if [[ $# -lt 2 ]] || [[ $2 == "" ]]; then
         die "No remark specified"
     fi
     local remark=$2
 
     local branchName=test
-    if [[ $3 != "" ]]; then
+    if [[ $# -lt 3 ]] || [[ $3 != "" ]]; then
         branchName=$3
     fi
 
     local allPkgs=()
     for service in "${services[@]}"; do
         divider
-        cecho info "$service"
+        cecho debug "$service"
         cd "$workDir/$service"server || die "No such service: $service"
-        git checkout $branchName
-        git pull origin $branchName
-        local commitHash=$(git rev-parse HEAD)
+        git checkout "$branchName"
+        git pull origin "$branchName"
+        local commitHash
+        commitHash=$(git rev-parse HEAD)
         console.sh pkg || die "Package failed: $service"
         local pkgName="$service-$branchName-${commitHash:0:8}.tar.gz"
         console.sh store "$pkgName" "$remark" || die "Store failed: $service"
-        allPkgs+=($pkgName)
+        commitCode
+        allPkgs+=("$pkgName")
     done
 
-    joinBy $'\n' "${allPkgs[@]}"
+    divider
+    cecho ok "joinBy $'\n' "${allPkgs[@]}""
     echo 
 }
 Ssh() {
+    cecho debug "Ssh..."
     local ip=""
     if [[ $1 != "" ]]; then
         if [[ $1 == "dev" ]]; then
@@ -657,11 +745,11 @@ Ssh() {
 
     if [[ $ip == 'j' ]]; then
         ip=$jIp
-        ssh $jUser@$jIp -p $jPort
+        ssh "$jUser"@"$jIp" -p "$jPort"
     fi
 
-    local user=""
-    if [[ $2 != "" ]]; then
+    local user="root"
+    if [[ $# -gt 1 ]] && [[ $2 != "" ]]; then
         if [[ $2 == "dev" ]]; then
             user=$devUser
         elif [[ $2 == "test" ]]; then
@@ -675,8 +763,8 @@ Ssh() {
         fi
     fi
 
-    local port=""
-    if [[ $3 != "" ]]; then
+    local port="22"
+    if [[ $# -gt 2 ]] && [[ $3 != "" ]]; then
         if [[ $3 == "dev" ]]; then
             port=$devPort
         elif [[ $3 == "test" ]]; then
@@ -690,7 +778,7 @@ Ssh() {
         fi
     fi
 
-    ssh $user@$ip -p $port
+    ssh "$user"@"$ip" -p "$port"
 }
 Log() {
     cecho warn "TODO"
@@ -699,7 +787,8 @@ Log() {
 # main
 main() {
     if [[ $# -lt 1 ]]; then
-        echo Hello, $(cecho greet "$username") 
+        echo -n "Hello, "
+        cecho greet "$username"
         echo "Version: $version"
         safeExit
     fi
@@ -722,7 +811,8 @@ main() {
     sync | s) Sync "${@:2}" ;;
     deploy | d) Deploy "${@:2}" ;;
     ssh | go) Ssh "${@:2}" ;;
-    log | l) Log "${@:2}" ;;
+	log | l) Log "${@:2}" ;;
+    test) Test "${@:2}" ;;
     *) Usage ;;
     esac
 }
